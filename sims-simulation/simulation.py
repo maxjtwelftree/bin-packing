@@ -1,13 +1,20 @@
 import random
-
 import matplotlib.pyplot as plt
-import copy
-from typing import List, Dict, Tuple
+from typing import List, Tuple
 
 from State import State, Box
 
+# Function to generate random boxes
+def generate_random_boxes(n_boxes: int, max_width: int, max_height: int):
+    boxes = []
+    for i in range(1, n_boxes + 1):
+        width = random.randint(1, max_width)
+        height = random.randint(1, max_height)
+        boxes.append(Box(width, height, i))
+    return boxes
+
 # Function to visualize the current state using matplotlib
-def plot_state(state: State, title: str):
+def plot_state(state: State, title: str, save_filename=None):
     fig, ax = plt.subplots()
     container_height = state.height
     container_width = state.width
@@ -28,50 +35,50 @@ def plot_state(state: State, title: str):
     ax.set_title(title)
     ax.set_xlabel('Width')
     ax.set_ylabel('Height')
-    plt.show()
+    if save_filename:
+        plt.savefig(save_filename)
+        plt.close(fig)
+    else:
+        plt.show()
 
-def random_one_step(pre_boxes, width, height):
-    boxes = [item for item in pre_boxes]
+def random_packing(boxes, width, height):
     state = State(width, height)
-    # Perform first action if available and generate a new state
     for box in boxes:
         state.add_box(box)
-        possible_actions = state.get_possible_actions()
-        action = random.choice(possible_actions)
-        state = state.perform_action(action)
+    step = 0
+    while state.boxes_to_place:
+        box = random.choice(state.boxes_to_place)
+        possible_actions = []
+        rotations = box.get_rotations()
+        # For the selected box, find possible actions
+        for layer, intervals in state.available_spaces.items():
+            for interval in intervals:
+                for rotation in rotations:
+                    if state.can_place_item(layer, interval, rotation):
+                        possible_actions.append((box, layer, interval, rotation))
+        if possible_actions:
+            action = random.choice(possible_actions)
+            state = state.perform_action(action)
+            # Plot the current state and save it as an image
+            step += 1
+            plot_state(state, f"Step {step}", save_filename=f"step_{step}.png")
+        else:
+            # Cannot place the box, remove it
+            state.boxes_to_place.remove(box)
     return state
 
-def get_best(pre_boxes, width, height, epoch=5000):
-    # Example setup to simulate bin packing
-    best_state = None
-    # Perform first action if available and generate a new state
-    for i in range(epoch):
-        state = random_one_step(pre_boxes, width, height)
-        if best_state is None or best_state < state:
-            best_state = state
-    # Plot the new state after action
-    plot_state(best_state, "2D Bin Packing After First Action")
+def main():
+    # Generate random boxes
+    num_boxes = 30
+    max_box_width = 5
+    max_box_height = 5
+    boxes = generate_random_boxes(num_boxes, max_box_width, max_box_height)
+    # Set container dimensions
+    container_width, container_height = 10, 10
+    # Run the random packing simulation
+    final_state = random_packing(boxes, container_width, container_height)
+    # Plot the final state
+    plot_state(final_state, "Final Packing State")
 
-# Example 1: Small boxes
-boxes1 = [Box(1, 1, 1), Box(1, 1, 2), Box(2, 2, 3)]
-get_best(boxes1, 10, 10)
-
-# Example 2: Larger boxes
-boxes2 = [Box(3, 3, 1), Box(4, 5, 2), Box(2, 2, 3)]
-get_best(boxes2, 10, 10)
-
-# Example 3: Mixed size boxes
-boxes3 = [Box(1, 2, 1), Box(5, 3, 2), Box(2, 1, 3), Box(3, 3, 4)]
-get_best(boxes3, 10, 10)
-
-# Example 4: More boxes with different sizes
-boxes4 = [Box(2, 3, 1), Box(3, 2, 2), Box(4, 4, 3), Box(1, 1, 4), Box(2, 5, 5)]
-get_best(boxes4, 10, 10)
-
-# Example 5: More complex set with different sizes
-boxes5 = [Box(3, 3, 1), Box(1, 1, 2), Box(5, 2, 3), Box(2, 6, 4), Box(4, 3, 5), Box(2, 2, 6)]
-get_best(boxes5, 10, 10)
-
-# Example 6: Larger container
-boxes6 = [Box(5, 5, 1), Box(3, 3, 2), Box(7, 2, 3), Box(4, 4, 4)]
-get_best(boxes6, 15, 15)
+if __name__ == "__main__":
+    main()
