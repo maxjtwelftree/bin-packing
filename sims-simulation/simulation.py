@@ -1,8 +1,7 @@
 import random
 import matplotlib.pyplot as plt
 from typing import List, Tuple
-
-from State import State, Box
+from state import State, Box
 
 # Function to generate random boxes
 def generate_random_boxes(n_boxes: int, max_width: int, max_height: int):
