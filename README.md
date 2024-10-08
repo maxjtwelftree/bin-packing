@@ -42,11 +42,11 @@ The FFDH algorithm sorts the boxes in decreasing order based on their area (widt
 
 ### Monte Carlo Tree Search (MCTS)
 
-![MCTS Result](resources/"25k with penalty.png")
+![MCTS Result](resources/mcts.png)
 
 - **Total Boxes Placed:** *6*
 - **Total Area Utilized:** *10 x 10*
-*This is with 25k iterations and a penalty score of 20*
+*this is with 25k iterations and a penalty score of 20*
 
 **Description:**
 
