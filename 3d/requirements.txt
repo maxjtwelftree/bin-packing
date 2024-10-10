@@ -1,0 +1,4 @@
+ModernGL
+glfw
+pyrr
+numpy
