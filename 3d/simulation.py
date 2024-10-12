@@ -1,16 +1,17 @@
 import random
-from typing import List
+import time
+from typing import List, Tuple
 
 from state import State, Box
 from monte import mcts
+from features import extract_features
 
 import matplotlib.pyplot as plt
-from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+import matplotlib.patches as patches
 import matplotlib.colors as mcolors
 import numpy as np
 
-# Function to generate random boxes
-def generate_random_boxes(n_boxes: int, max_width: int, max_height: int, max_depth: int):
+def generate_random_boxes(n_boxes: int, max_width: int, max_height: int, max_depth: int) -> List[Box]:
     boxes = []
     for i in range(1, n_boxes + 1):
         width = random.randint(1, max_width)
@@ -19,7 +20,6 @@ def generate_random_boxes(n_boxes: int, max_width: int, max_height: int, max_dep
         boxes.append(Box(width, height, depth, i))
     return boxes
 
-# Function to visualize the current state using Matplotlib 3D
 def plot_state_3d(state: State, title: str, save_filename=None):
     fig = plt.figure()
     ax = fig.add_subplot(111, projection='3d')
@@ -27,11 +27,9 @@ def plot_state_3d(state: State, title: str, save_filename=None):
     container_height = state.height
     container_depth = state.depth
 
-    # Generate a list of colors for the boxes
     color_list = list(mcolors.TABLEAU_COLORS.values())
     num_colors = len(color_list)
     
-    # Plot each box based on the action history
     for idx, action in enumerate(state.action_history):
         box, position, rotation = action
         x0, y0, z0 = position
@@ -39,26 +37,44 @@ def plot_state_3d(state: State, title: str, save_filename=None):
         color = color_list[idx % num_colors]
         
         # Define the corners of the box
-        x = [x0, x0 + box_width]
-        y = [y0, y0 + box_height]
-        z = [z0, z0 + box_depth]
-        # Create a mesh grid
-        xx, yy = np.meshgrid(x, y)
-        # Plot surfaces of the box
-        ax.plot_surface(xx, yy, np.full_like(xx, z[0]), color=color, alpha=0.7)
-        ax.plot_surface(xx, yy, np.full_like(xx, z[1]), color=color, alpha=0.7)
-        zz, yy = np.meshgrid(z, y)
-        ax.plot_surface(np.full_like(zz, x[0]), yy, zz, color=color, alpha=0.7)
-        ax.plot_surface(np.full_like(zz, x[1]), yy, zz, color=color, alpha=0.7)
-        xx, zz = np.meshgrid(x, z)
-        ax.plot_surface(xx, np.full_like(xx, y[0]), zz, color=color, alpha=0.7)
-        ax.plot_surface(xx, np.full_like(xx, y[1]), zz, color=color, alpha=0.7)
-        # Add box ID at the center
+        corners = [
+            [x0, y0, z0],
+            [x0 + box_width, y0, z0],
+            [x0 + box_width, y0 + box_height, z0],
+            [x0, y0 + box_height, z0],
+            [x0, y0, z0 + box_depth],
+            [x0 + box_width, y0, z0 + box_depth],
+            [x0 + box_width, y0 + box_height, z0 + box_depth],
+            [x0, y0 + box_height, z0 + box_depth]
+        ]
+        
+        # Define the edges of the box
+        edges = [
+            [corners[0], corners[1]],
+            [corners[1], corners[2]],
+            [corners[2], corners[3]],
+            [corners[3], corners[0]],
+            [corners[4], corners[5]],
+            [corners[5], corners[6]],
+            [corners[6], corners[7]],
+            [corners[7], corners[4]],
+            [corners[0], corners[4]],
+            [corners[1], corners[5]],
+            [corners[2], corners[6]],
+            [corners[3], corners[7]]
+        ]
+        
+        # Plot the edges
+        for edge in edges:
+            xs, ys, zs = zip(*edge)
+            ax.plot(xs, ys, zs, color=color)
+        
+        # Add box ID and dimensions at the center
         ax.text(
             x0 + box_width / 2,
             y0 + box_height / 2,
             z0 + box_depth / 2,
-            f'ID:{box.id}',
+            f'ID:{box.id}\n{box_width}x{box_height}x{box_depth}',
             ha='center',
             va='center',
             color='black',
@@ -83,37 +99,116 @@ def plot_state_3d(state: State, title: str, save_filename=None):
     else:
         plt.show()
 
-def mcts_packing(boxes, width, height, depth, iterations_per_move=100):
+def mcts_packing_with_timing_and_reward(boxes: List[Box], width: int, height: int, depth: int, iterations_per_move: int = 1000) -> Tuple[State, List[float], List[float], List[np.ndarray]]:
     state = State(width, height, depth)
     for box in boxes:
         state.add_box(box)
     step = 0
+    time_costs = []
+    rewards = []
+    feature_vectors = []
+    
     while state.boxes_to_place and state.get_possible_actions():
-        # Use MCTS to select the best action
+        start_time = time.time()
         best_action = mcts(state, iterations=iterations_per_move)
+        end_time = time.time()
+        elapsed_time = end_time - start_time
+        time_costs.append(elapsed_time)
+        
         if best_action:
             state = state.perform_action(best_action)
-            # Plot the current state and save it as an image
             step += 1
-            print(f"Step {step}: Placed box {best_action[0].id}")
+            reward = state.evaluation()
+            rewards.append(reward)
+            features = extract_features(state)
+            feature_vectors.append(features)
+            print(f"Step {step}: Placed box {best_action[0].id} in {elapsed_time:.4f} seconds with reward {reward}")
             plot_state_3d(state, f"Step {step}", save_filename=f"step_{step}.png")
         else:
-            break  # No valid actions available
-    return state
+            print("No valid actions available. Terminating packing.")
+            break
+    
+    return state, time_costs, rewards, feature_vectors
+
+def plot_time_cost(time_costs: List[float]):
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, len(time_costs) + 1), time_costs, marker='o', linestyle='-', color='blue')
+    plt.xlabel('Step')
+    plt.ylabel('Time Cost (seconds)')
+    plt.title('MCTS Time Cost per Step')
+    plt.grid(True)
+    plt.savefig('mcts_time_cost.png')
+    plt.close()
+    print("MCTS time cost plot saved as 'mcts_time_cost.png'.")
+
+def plot_reward_curve(rewards: List[float]):
+    plt.figure(figsize=(10, 6))
+    plt.plot(range(1, len(rewards) + 1), rewards, marker='x', linestyle='-', color='green')
+    plt.xlabel('Step')
+    plt.ylabel('Reward')
+    plt.title('Reward vs. Number of Steps')
+    plt.grid(True)
+    plt.savefig('reward_curve.png')
+    plt.close()
+    print("Reward curve plot saved as 'reward_curve.png'.")
 
 def main():
-    # Generate random boxes
-    num_boxes = 10  # Reduced for better visualization
+    num_boxes = 30
     max_box_width = 5
     max_box_height = 5
     max_box_depth = 5
     boxes = generate_random_boxes(num_boxes, max_box_width, max_box_height, max_box_depth)
-    # Set container dimensions
+    
+    visualize_boxes_2d(boxes)
+    
     container_width, container_height, container_depth = 10, 10, 10
-    # Run the MCTS packing simulation
-    final_state = mcts_packing(boxes, container_width, container_height, container_depth, iterations_per_move=1000)
-    # Plot the final state
-    plot_state_3d(final_state, "Final Packing State")
+    
+    final_state, time_costs, rewards, feature_vectors = mcts_packing_with_timing_and_reward(
+        boxes,
+        container_width,
+        container_height,
+        container_depth,
+        iterations_per_move=1000
+    )
+    
+    plot_state_3d(final_state, "Final Packing State", save_filename="final_packing_state.png")
+    print("Final packing state plot saved as 'final_packing_state.png'.")
+    
+    plot_time_cost(time_costs)
+    plot_reward_curve(rewards)
+    
+    np.save('feature_vectors.npy', feature_vectors)
+    print("Feature vectors saved as 'feature_vectors.npy'.")
+
+def visualize_boxes_2d(boxes: List[Box]):
+    fig, ax = plt.subplots(figsize=(12, 6))
+    color_list = list(mcolors.TABLEAU_COLORS.values())
+    spacing = 1
+    current_x = 0
+    
+    print("Initial Boxes:")
+    for box in boxes:
+        width, height, depth, box_id = box.width, box.height, box.depth, box.id
+        print(f"Box ID: {box_id}, Dimensions: w {width}x h {height}x d{depth}")
+        rect = patches.Rectangle((current_x, 0), width, height, linewidth=1, edgecolor='black', facecolor=random.choice(color_list), alpha=0.7)
+        ax.add_patch(rect)
+        ax.text(current_x + width / 2, height / 2, f'ID:{box_id}\n{width}x{height}x{depth}', 
+                ha='center', va='center', fontsize=8, color='black')
+        current_x += width + spacing
+    
+    max_x = current_x
+    max_y = max(box.height for box in boxes) + 5
+    ax.set_xlim(0, max_x)
+    ax.set_ylim(0, max_y)
+    ax.set_xlabel('Width')
+    ax.set_ylabel('Height')
+    ax.set_title('Initial Boxes to be Packed, width, height, depth')
+    ax.set_aspect('equal')
+    
+    plt.tight_layout()
+    plt.savefig('initial_boxes_2d.png')
+    plt.close(fig)
+    print("Initial boxes 2D visualization saved as 'initial_boxes_2d.png'.")
 
 if __name__ == "__main__":
     main()
