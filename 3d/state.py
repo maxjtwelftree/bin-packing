@@ -1,6 +1,10 @@
 from typing import List, Tuple
 from itertools import permutations
 
+
+# checking if this comment will, go through with the commit
+
+
 # Define the penalty factor globally
 penalty_factor = 10  # Adjust this value as needed
 
